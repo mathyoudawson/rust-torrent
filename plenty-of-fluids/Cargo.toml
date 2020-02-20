@@ -1,0 +1,15 @@
+[package]
+name = "plenty-of-fluids"
+version = "0.1.0"
+authors = ["Matthew Dawson <matthewdawson@outlook.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rustc-serialize = "0.3"
+
+[dependencies.bencode]
+
+# git = "https://github.com/arjantop/rust-bencode.git"
+path = "../../rust-bencode"
