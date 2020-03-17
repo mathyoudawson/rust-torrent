@@ -8,8 +8,10 @@ edition = "2018"
 
 [dependencies]
 rustc-serialize = "0.3"
+reqwest = { version = "0.10", features = ["blocking", "json"] }
+url = "2.1"
+sha-1 = "0.8"
 
 [dependencies.bencode]
-
 # git = "https://github.com/arjantop/rust-bencode.git"
 path = "../../rust-bencode"

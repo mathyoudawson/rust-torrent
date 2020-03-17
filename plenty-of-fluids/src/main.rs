@@ -4,12 +4,15 @@ extern crate bencode;
 use rustc_serialize::{Encodable, Decodable};
 
 use bencode::{encode, Decoder, Bencode};
+use url::Url;
+use std::collections::*;
+use sha1::{Sha1, Digest};
 
 use std::fs;
 
 #[derive(RustcEncodable, RustcDecodable, PartialEq, Debug)]
 struct TorrentMetadata{
-    info_hash: TorrentMetadataInfo,
+    info: TorrentMetadataInfo,
     announce: String,
 }
 
@@ -46,6 +49,7 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
     };
 
     let announce = top_level_dict.remove(&bencode::util::ByteString::from_str("announce")).unwrap().to_string();
+    println!("tld: {}", bencode);
     let info_hashish = top_level_dict.remove(&bencode::util::ByteString::from_str("info")).unwrap();
     let mut info_dict = if let Bencode::Dict(ref dict) = info_hashish { dict.clone() } else { panic!("darn") };
 
@@ -64,7 +68,7 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
 
     let metadata = TorrentMetadata {
         announce,
-        info_hash: TorrentMetadataInfo  {
+        info: TorrentMetadataInfo  {
             length: info_length,
             name: info_name,
             piece_length: 12,
@@ -78,6 +82,7 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
         println!("REMAINING KEY: {}", key);
     }
 
+    build_tracker_query(metadata).unwrap();
     unimplemented!()
 }
 
@@ -104,5 +109,74 @@ fn dump(bencode: Bencode) -> Bencode {
     } 
 
     bencode
+}
+
+
+fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
+    
+    println!("url: {}", torrent.announce);
+
+
+    let formatted_url = if torrent.announce.starts_with("s") {
+        println!("AMENDING");
+        let mut url: String = torrent.announce.chars().skip(2).collect();
+        url.truncate(url.len() - 1);
+        url
+    }
+    else {
+        torrent.announce.clone()
+    };
+
+    let mut hasher = Sha1::new();
+    hasher.input(encode(&torrent.info).unwrap());
+
+    let hash = hasher.result();
+    let hash_str = make_url_encoded(&hash);
+
+    //let info_hash: String = url::form_urlencoded::byte_serialize(&hash);
+    println!("HASH STR: {:?}", hash_str);
+
+    let query = Url::parse_with_params(&formatted_url,
+        &[
+            ("info_hash", &hash_str[..]),
+            ("peer_id", "BLARGH1234"),
+            ("port", "6881"),
+            ("uploaded", "0"),
+            ("downloaded", "0"),
+            ("compact", "0"),
+            ("left", &torrent.info.length.to_string()),
+        ]).unwrap();
+
+
+    println!("URL: {:?}", query);
+
+    let resp = reqwest::blocking::get(&query.to_string())?
+        .json::<HashMap<String, String>>()?;
+
+    println!("Reponse: {:#?}", resp);
+    Ok(())
+}
+
+
+fn make_url_encoded(data: &[u8]) -> String {
+    let pieces: Vec<String> = data.iter().map(|byte| {
+        format!("%{:02x}", byte)
+    }).collect();
+
+    pieces.join("")
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn url_encoding()  {
+        assert_eq!(make_url_encoded(b"hello"),
+                   "%68%65%6c%6c%6f");
+
+    }
+
+
 }
 
