@@ -9,5 +9,6 @@ WORKDIR /home/torrent-tracker
 USER torrent-tracker
 
 RUN npm install bittorrent-tracker
+ADD hash.js .
 
-CMD /home/torrent-tracker/node_modules/bittorrent-tracker/bin/cmd.js
+CMD /home/torrent-tracker/hash.js
