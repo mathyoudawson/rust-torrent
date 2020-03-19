@@ -27,7 +27,8 @@ struct TorrentMetadataInfo {
 }
 
 fn main() {
-    const TORRENT_PATH: &str = "src/archlinux-2020.02.01-x86_64.iso.torrent";
+    //const TORRENT_PATH: &str = "src/archlinux-2020.02.01-x86_64.iso.torrent";
+    const TORRENT_PATH: &str = "test.torrent";
 
     let bencoded_metadata = fs::read(TORRENT_PATH).unwrap();
 
@@ -79,9 +80,9 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
     };
     println!("old tracker: {:?}", metadata.announce);
     metadata.announce = "http://localhost:4040/announce".to_owned();
-    println!("new, patched in tracker: {:?}", metadata.announce);
+     println!("new, patched in tracker: {:?}", metadata.announce);
 
-    // println!("metadata:  {:#?}", metadata);
+     println!("metadata:  {:#?}", metadata);
 
     for key in top_level_dict.keys() {
         println!("REMAINING KEY: {}", key);
@@ -162,8 +163,10 @@ fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
     hasher.input(encode(&torrent.info).unwrap());
 
     let hash = hasher.result();
-    // let hash_str = make_url_encoded(&hash);
+    // let hash_str = bytes_to_hash_str(&hash);
     let hash_str = dirty_ruby_urlencode_hack(&hash);
+    let hash_bad_str = bytes_to_hash_str(&hash);
+    println!("HASH TO USE: '{}'", hash_bad_str);
 
     //let info_hash: String = url::form_urlencoded::byte_serialize(&hash);
     println!("HASH STR: {:?}", hash_str);
@@ -193,9 +196,9 @@ fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
 }
 
 
-fn make_url_encoded(data: &[u8]) -> String {
+fn bytes_to_hash_str(data: &[u8]) -> String {
     let pieces: Vec<String> = data.iter().map(|byte| {
-        format!("%{:02x}", byte)
+        format!("{:02x}", byte)
     }).collect();
 
     pieces.join("")
@@ -207,7 +210,7 @@ mod test {
 
     #[test]
     fn url_encoding()  {
-        assert_eq!(make_url_encoded(b"hello"),
+        assert_eq!(bytes_to_hash_str(b"hello"),
                    "%68%65%6c%6c%6f");
 
     }
