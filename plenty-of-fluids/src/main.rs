@@ -6,6 +6,8 @@ use rustc_serialize::{Encodable, Decodable};
 use bencode::{encode, Decoder, Bencode};
 use url::Url;
 use std::collections::*;
+use std::io::prelude::*;
+use std::process::Command;
 use sha1::{Sha1, Digest};
 
 use std::fs;
@@ -117,12 +119,35 @@ fn dump(bencode: Bencode) -> Bencode {
     bencode
 }
 
+fn dirty_ruby_urlencode_hack(bytes: &[u8])
+    -> String {
+    let temp_dir = std::env::temp_dir();
+    let temp_file_path = temp_dir.join("temp-plenty-of-fluids.bin");
+
+    let mut temp_file = std::fs::File::create(&temp_file_path).unwrap();
+
+    temp_file.write_all(bytes).unwrap();
+    drop(temp_file);
+
+    let urlencoded_process = Command::new("ruby")
+        .arg("-rcgi")
+        .arg("-e")
+        .arg("puts CGI.escape(ARGF.read)")
+        .arg(temp_file_path)
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = urlencoded_process.stdout;
+    let stdout_bytes: Result<Vec<u8>, _>  = stdout.bytes().collect();
+    let stdout_bytes = stdout_bytes.unwrap();
+    let stdout_str = String::from_utf8(stdout_bytes).expect("Ruby did not produce valid UTF-8");
+    //unimplemented!("urlencoded output: '{}'", stdout_str);
+    // ruby -e 'puts CGI.escape(ARGF.read)'
+    stdout_str
+}
+
 
 fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
-    
-    println!("url: {}", torrent.announce);
-
-
     let formatted_url = if torrent.announce.starts_with("s") {
         println!("AMENDING");
         let mut url: String = torrent.announce.chars().skip(2).collect();
@@ -137,7 +162,8 @@ fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
     hasher.input(encode(&torrent.info).unwrap());
 
     let hash = hasher.result();
-    let hash_str = make_url_encoded(&hash);
+    // let hash_str = make_url_encoded(&hash);
+    let hash_str = dirty_ruby_urlencode_hack(&hash);
 
     //let info_hash: String = url::form_urlencoded::byte_serialize(&hash);
     println!("HASH STR: {:?}", hash_str);
@@ -156,8 +182,11 @@ fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
 
     println!("URL: {:?}", query);
 
+    // let resp = reqwest::blocking::get(&query.to_string())?
+    //     .json::<HashMap<String, String>>()?;
+
     let resp = reqwest::blocking::get(&query.to_string())?
-        .json::<HashMap<String, String>>()?;
+        .text();
 
     println!("Reponse: {:#?}", resp);
     Ok(())
