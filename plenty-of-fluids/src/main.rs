@@ -66,7 +66,7 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
 
     println!("Info: {}", info_hashish);
 
-    let metadata = TorrentMetadata {
+    let mut metadata = TorrentMetadata {
         announce,
         info: TorrentMetadataInfo  {
             length: info_length,
@@ -75,14 +75,20 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
             piece_hashes: [0; 20],
         },
     };
+    println!("old tracker: {:?}", metadata.announce);
+    metadata.announce = "http://localhost:4040/announce".to_owned();
+    println!("new, patched in tracker: {:?}", metadata.announce);
 
-    println!("metadata:  {:#?}", metadata);
+    // println!("metadata:  {:#?}", metadata);
 
     for key in top_level_dict.keys() {
         println!("REMAINING KEY: {}", key);
     }
 
-    build_tracker_query(metadata).unwrap();
+    match build_tracker_query(metadata){
+        Ok(()) => println!("Result successful"),
+        Err(r) => println!("Result unsuccessful {}", r),
+    }  //unwrap();
     unimplemented!()
 }
 
