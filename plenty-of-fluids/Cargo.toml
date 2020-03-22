@@ -13,5 +13,5 @@ url = "2.1"
 sha-1 = "0.8"
 
 [dependencies.bencode]
-# git = "https://github.com/arjantop/rust-bencode.git"
-path = "../../rust-bencode"
+git = "https://github.com/arjantop/rust-bencode.git"
+# path = "../../rust-bencode"
