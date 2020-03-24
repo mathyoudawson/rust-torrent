@@ -197,10 +197,12 @@ fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
 
 
 fn bytes_to_hash_str(data: &[u8]) -> String {
+    println!("data: {:?}", data);
     let pieces: Vec<String> = data.iter().map(|byte| {
-        format!("{:02x}", byte)
+        format!("%{:02x}", byte)
     }).collect();
 
+    println!("pieces: {:?}", pieces);
     pieces.join("")
 }
 
@@ -214,7 +216,5 @@ mod test {
                    "%68%65%6c%6c%6f");
 
     }
-
-
 }
 
