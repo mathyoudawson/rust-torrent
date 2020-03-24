@@ -20,8 +20,8 @@ struct TorrentMetadata{
 
 #[derive(RustcEncodable, RustcDecodable, PartialEq, Debug)]
 struct TorrentMetadataInfo {
-    piece_hashes: [u8; 20],
-    piece_length: i32,
+    pieces: [u8; 20],
+    piece_length: i64,
     length:      i64,
     name:        String,
 }
@@ -36,7 +36,7 @@ fn main() {
 
 
     let result = parse_torrent_file(&bencode);
-    println!("{:?}", result);
+    println!("Parsed torrent file: {:?}", result);
 
     //let mut decoder = Decoder::new(&bencode);
     // parse_single_or_multi_file_metadata(&bencode);
@@ -51,15 +51,30 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
         panic!("top  level bencode should be a dict");
     };
 
-    let announce = top_level_dict.remove(&bencode::util::ByteString::from_str("announce")).unwrap().to_string();
     println!("tld: {}", bencode);
+    let announce = top_level_dict.remove(&bencode::util::ByteString::from_str("announce")).unwrap().to_string();
     let info_hashish = top_level_dict.remove(&bencode::util::ByteString::from_str("info")).unwrap();
+
     let mut info_dict = if let Bencode::Dict(ref dict) = info_hashish { dict.clone() } else { panic!("darn") };
 
     for key in info_dict.keys().collect::<Vec<_>>() {
         println!("info: {}", key);
 
     }
+
+    let pieces =  match info_dict.remove(&bencode::util::ByteString::from_str("pieces")).unwrap() {
+        bencode::Bencode::ByteString(v) => v,
+        _ => panic!("Not a number"),
+    };
+
+    println!("pieces: {:?}", pieces);
+
+    let piece_length =  match info_dict.remove(&bencode::util::ByteString::from_str("piece length")).unwrap() {
+        bencode::Bencode::Number(n) => n,
+        _ => panic!("Not a number"),
+    };
+
+    println!("lengthhhhh: {}", piece_length);
 
     let info_name = info_dict.remove(&bencode::util::ByteString::from_str("name")).unwrap().to_string();
     let info_length: i64 = match info_dict.remove(&bencode::util::ByteString::from_str("length")).unwrap() {
@@ -74,8 +89,8 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
         info: TorrentMetadataInfo  {
             length: info_length,
             name: info_name,
-            piece_length: 12,
-            piece_hashes: [0; 20],
+            piece_length: piece_length,
+            pieces: [0; 20],
         },
     };
     println!("old tracker: {:?}", metadata.announce);
