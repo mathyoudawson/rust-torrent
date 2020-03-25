@@ -35,16 +35,21 @@ fn main() {
     let bencode: bencode::Bencode = bencode::from_vec(bencoded_metadata).unwrap();
 
 
-    let result = parse_torrent_file(&bencode);
-    println!("Parsed torrent file: {:?}", result);
+    let metadata = parse_torrent_file(&bencode).unwrap();
+    println!("Parsed torrent file: {:?}", metadata);
 
-    //let mut decoder = Decoder::new(&bencode);
-    // parse_single_or_multi_file_metadata(&bencode);
-    //let result: TorrentMetadata = Decodable::decode(&mut decoder).unwrap();
+    let tracker_query = match build_tracker_query(metadata){
+        Ok(query) => query,
+        Err(e) => panic!("Could not build tracker query: {}", e),
+    };  //unwrap();
+
+    match execute_tracker_query(tracker_query) {
+        Ok(response) => println!("Successful query: {}", response),
+        Err(e) => panic!("Request error: {}", e),
+    }
 }
 
-fn parse_torrent_file(bencode: &bencode::Bencode)
-    -> Result<TorrentMetadata, String> {
+fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, String> {
     let mut top_level_dict = if let Bencode::Dict(dict) = bencode {
         dict.clone()
     } else {
@@ -62,21 +67,25 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
 
     }
 
-    let pieces =  match info_dict.remove(&bencode::util::ByteString::from_str("pieces")).unwrap() {
-        bencode::Bencode::ByteString(v) => v,
-        _ => panic!("Not a number"),
-    };
+    let pieces = match info_dict.remove(&bencode::util::ByteString::from_str("pieces")).unwrap() {
+        bencode::Bencode::ByteString(v) => { 
+            let mut pieces_array = [0u8; 20];
+            for (place, element) in pieces_array.iter_mut().zip(v.iter()) {
+                *place = *element;
+            }
+            pieces_array
 
-    println!("pieces: {:?}", pieces);
+        },
+        _ => panic!("Not a bytestring"),
+    };
 
     let piece_length =  match info_dict.remove(&bencode::util::ByteString::from_str("piece length")).unwrap() {
         bencode::Bencode::Number(n) => n,
         _ => panic!("Not a number"),
     };
 
-    println!("lengthhhhh: {}", piece_length);
-
     let info_name = info_dict.remove(&bencode::util::ByteString::from_str("name")).unwrap().to_string();
+
     let info_length: i64 = match info_dict.remove(&bencode::util::ByteString::from_str("length")).unwrap() {
         Bencode::Number(n) => n,
         _ => panic!("invalid torrent file length"),
@@ -90,7 +99,7 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
             length: info_length,
             name: info_name,
             piece_length: piece_length,
-            pieces: [0; 20],
+            pieces: pieces,
         },
     };
     println!("old tracker: {:?}", metadata.announce);
@@ -103,11 +112,7 @@ fn parse_torrent_file(bencode: &bencode::Bencode)
         println!("REMAINING KEY: {}", key);
     }
 
-    match build_tracker_query(metadata){
-        Ok(()) => println!("Result successful"),
-        Err(r) => println!("Result unsuccessful {}", r),
-    }  //unwrap();
-    unimplemented!()
+    Ok(metadata)
 }
 
 fn parse_single_or_multi_file_metadata(bencode: &bencode::Bencode)
@@ -119,20 +124,6 @@ fn parse_single_or_multi_file_metadata(bencode: &bencode::Bencode)
 
         _ => panic!("corrupted"),
     }
-}
-
-
-fn dump(bencode: Bencode) -> Bencode {
-    match &bencode {
-        bencode::Bencode::ByteString(vec) => {
-            // convert to actual string and print
-        },
-        _ => {
-            println!("{:?}", bencode)
-        },
-    } 
-
-    bencode
 }
 
 fn dirty_ruby_urlencode_hack(bytes: &[u8])
@@ -163,7 +154,7 @@ fn dirty_ruby_urlencode_hack(bytes: &[u8])
 }
 
 
-fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
+fn build_tracker_query(torrent: TorrentMetadata) ->  Result<url::Url, reqwest::Error> { // reqwest::Error> {
     let formatted_url = if torrent.announce.starts_with("s") {
         println!("AMENDING");
         let mut url: String = torrent.announce.chars().skip(2).collect();
@@ -203,11 +194,14 @@ fn build_tracker_query(torrent: TorrentMetadata) -> Result<(), reqwest::Error> {
     // let resp = reqwest::blocking::get(&query.to_string())?
     //     .json::<HashMap<String, String>>()?;
 
-    let resp = reqwest::blocking::get(&query.to_string())?
+    Ok(query)
+}
+
+fn execute_tracker_query(query: url::Url) -> Result<String, reqwest::Error> {
+    let response = reqwest::blocking::get(&query.to_string())?
         .text();
 
-    println!("Reponse: {:#?}", resp);
-    Ok(())
+   Ok(response.unwrap())
 }
 
 
