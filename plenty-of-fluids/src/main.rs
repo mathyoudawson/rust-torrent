@@ -104,9 +104,9 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
     };
     println!("old tracker: {:?}", metadata.announce);
     metadata.announce = "http://localhost:4040/announce".to_owned();
-     println!("new, patched in tracker: {:?}", metadata.announce);
+    println!("new, patched in tracker: {:?}", metadata.announce);
 
-     println!("metadata:  {:#?}", metadata);
+    println!("metadata:  {:#?}", metadata);
 
     for key in top_level_dict.keys() {
         println!("REMAINING KEY: {}", key);
@@ -117,40 +117,40 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
 
 fn parse_single_or_multi_file_metadata(bencode: &bencode::Bencode)
     -> Result<String, String> {
-    match bencode {
-        Bencode::Dict(entries) => {
-            panic!("entries: {:#?}", entries);
-        },
+        match bencode {
+            Bencode::Dict(entries) => {
+                panic!("entries: {:#?}", entries);
+            },
 
-        _ => panic!("corrupted"),
-    }
+            _ => panic!("corrupted"),
+        }
 }
 
 fn dirty_ruby_urlencode_hack(bytes: &[u8])
     -> String {
-    let temp_dir = std::env::temp_dir();
-    let temp_file_path = temp_dir.join("temp-plenty-of-fluids.bin");
+        let temp_dir = std::env::temp_dir();
+        let temp_file_path = temp_dir.join("temp-plenty-of-fluids.bin");
 
-    let mut temp_file = std::fs::File::create(&temp_file_path).unwrap();
+        let mut temp_file = std::fs::File::create(&temp_file_path).unwrap();
 
-    temp_file.write_all(bytes).unwrap();
-    drop(temp_file);
+        temp_file.write_all(bytes).unwrap();
+        drop(temp_file);
 
-    let urlencoded_process = Command::new("ruby")
-        .arg("-rcgi")
-        .arg("-e")
-        .arg("puts CGI.escape(ARGF.read)")
-        .arg(temp_file_path)
-        .output()
-        .expect("Failed to execute command");
+        let urlencoded_process = Command::new("ruby")
+            .arg("-rcgi")
+            .arg("-e")
+            .arg("puts CGI.escape(ARGF.read)")
+            .arg(temp_file_path)
+            .output()
+            .expect("Failed to execute command");
 
-    let stdout = urlencoded_process.stdout;
-    let stdout_bytes: Result<Vec<u8>, _>  = stdout.bytes().collect();
-    let stdout_bytes = stdout_bytes.unwrap();
-    let stdout_str = String::from_utf8(stdout_bytes).expect("Ruby did not produce valid UTF-8");
-    //unimplemented!("urlencoded output: '{}'", stdout_str);
-    // ruby -e 'puts CGI.escape(ARGF.read)'
-    stdout_str
+        let stdout = urlencoded_process.stdout;
+        let stdout_bytes: Result<Vec<u8>, _>  = stdout.bytes().collect();
+        let stdout_bytes = stdout_bytes.unwrap();
+        let stdout_str = String::from_utf8(stdout_bytes).expect("Ruby did not produce valid UTF-8");
+        //unimplemented!("urlencoded output: '{}'", stdout_str);
+        // ruby -e 'puts CGI.escape(ARGF.read)'
+        stdout_str
 }
 
 
@@ -179,13 +179,13 @@ fn build_tracker_query(torrent: TorrentMetadata) ->  Result<url::Url, reqwest::E
 
     let query = Url::parse_with_params(&formatted_url,
         &[
-            ("info_hash", &hash_str[..]),
-            ("peer_id", "BLARGH1234"),
-            ("port", "6881"),
-            ("uploaded", "0"),
-            ("downloaded", "0"),
-            ("compact", "0"),
-            ("left", &torrent.info.length.to_string()),
+        ("info_hash", &hash_str[..]),
+        ("peer_id", "BLARGH1234"),
+        ("port", "6881"),
+        ("uploaded", "0"),
+        ("downloaded", "0"),
+        ("compact", "0"),
+        ("left", &torrent.info.length.to_string()),
         ]).unwrap();
 
 
@@ -201,7 +201,7 @@ fn execute_tracker_query(query: url::Url) -> Result<String, reqwest::Error> {
     let response = reqwest::blocking::get(&query.to_string())?
         .text();
 
-   Ok(response.unwrap())
+    Ok(response.unwrap())
 }
 
 
@@ -222,7 +222,7 @@ mod test {
     #[test]
     fn url_encoding()  {
         assert_eq!(bytes_to_hash_str(b"hello"),
-                   "%68%65%6c%6c%6f");
+        "%68%65%6c%6c%6f");
 
     }
 }
