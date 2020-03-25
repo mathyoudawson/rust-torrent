@@ -34,9 +34,8 @@ fn main() {
 
     let bencode: bencode::Bencode = bencode::from_vec(bencoded_metadata).unwrap();
 
-
     let metadata = parse_torrent_file(&bencode).unwrap();
-    println!("Parsed torrent file: {:?}", metadata);
+    // println!("Parsed torrent file: {:?}", metadata);
 
     let tracker_query = match build_tracker_query(metadata){
         Ok(query) => query,
@@ -56,17 +55,16 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
         panic!("top  level bencode should be a dict");
     };
 
-    println!("tld: {}", bencode);
+    // println!("tld: {}", bencode);
     let announce = top_level_dict.remove(&bencode::util::ByteString::from_str("announce")).unwrap().to_string();
     let info_hashish = top_level_dict.remove(&bencode::util::ByteString::from_str("info")).unwrap();
 
     let mut info_dict = if let Bencode::Dict(ref dict) = info_hashish { dict.clone() } else { panic!("darn") };
 
-    for key in info_dict.keys().collect::<Vec<_>>() {
-        println!("info: {}", key);
-
-    }
-
+    // for key in info_dict.keys().collect::<Vec<_>>() {
+    //      println!("info: {}", key);
+    //
+    // }
     let pieces = match info_dict.remove(&bencode::util::ByteString::from_str("pieces")).unwrap() {
         bencode::Bencode::ByteString(v) => { 
             let mut pieces_array = [0u8; 20];
@@ -91,7 +89,7 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
         _ => panic!("invalid torrent file length"),
     };
 
-    println!("Info: {}", info_hashish);
+    // println!("Info: {}", info_hashish);
 
     let mut metadata = TorrentMetadata {
         announce,
@@ -102,14 +100,14 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
             pieces: pieces,
         },
     };
-    println!("old tracker: {:?}", metadata.announce);
+    // println!("old tracker: {:?}", metadata.announce);
     metadata.announce = "http://localhost:4040/announce".to_owned();
-    println!("new, patched in tracker: {:?}", metadata.announce);
+    // println!("new, patched in tracker: {:?}", metadata.announce);
 
-    println!("metadata:  {:#?}", metadata);
+    // println!("metadata:  {:#?}", metadata);
 
     for key in top_level_dict.keys() {
-        println!("REMAINING KEY: {}", key);
+        // println!("REMAINING KEY: {}", key);
     }
 
     Ok(metadata)
@@ -156,7 +154,7 @@ fn dirty_ruby_urlencode_hack(bytes: &[u8])
 
 fn build_tracker_query(torrent: TorrentMetadata) ->  Result<url::Url, reqwest::Error> { // reqwest::Error> {
     let formatted_url = if torrent.announce.starts_with("s") {
-        println!("AMENDING");
+        // println!("AMENDING");
         let mut url: String = torrent.announce.chars().skip(2).collect();
         url.truncate(url.len() - 1);
         url
@@ -172,10 +170,10 @@ fn build_tracker_query(torrent: TorrentMetadata) ->  Result<url::Url, reqwest::E
     // let hash_str = bytes_to_hash_str(&hash);
     let hash_str = dirty_ruby_urlencode_hack(&hash);
     let hash_bad_str = bytes_to_hash_str(&hash);
-    println!("HASH TO USE: '{}'", hash_bad_str);
+    // println!("HASH TO USE: '{}'", hash_bad_str);
 
     //let info_hash: String = url::form_urlencoded::byte_serialize(&hash);
-    println!("HASH STR: {:?}", hash_str);
+    // println!("HASH STR: {:?}", hash_str);
 
     let query = Url::parse_with_params(&formatted_url,
         &[
@@ -189,7 +187,7 @@ fn build_tracker_query(torrent: TorrentMetadata) ->  Result<url::Url, reqwest::E
         ]).unwrap();
 
 
-    println!("URL: {:?}", query);
+    // println!("URL: {:?}", query);
 
     // let resp = reqwest::blocking::get(&query.to_string())?
     //     .json::<HashMap<String, String>>()?;
@@ -206,12 +204,12 @@ fn execute_tracker_query(query: url::Url) -> Result<String, reqwest::Error> {
 
 
 fn bytes_to_hash_str(data: &[u8]) -> String {
-    println!("data: {:?}", data);
+    // println!("data: {:?}", data);
     let pieces: Vec<String> = data.iter().map(|byte| {
         format!("%{:02x}", byte)
     }).collect();
 
-    println!("pieces: {:?}", pieces);
+    // println!("pieces: {:?}", pieces);
     pieces.join("")
 }
 
