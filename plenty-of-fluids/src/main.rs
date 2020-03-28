@@ -172,7 +172,7 @@ fn build_tracker_query(torrent: TorrentMetadata) ->  Result<url::Url, reqwest::E
     let query = Url::parse_with_params(&formatted_url,
         &[
         ("info_hash", &info_hash[..]),
-        ("peer_id", "BLARGH1234"),
+        ("peer_id", "plenty-of-fluid00001"),
         ("port", "6881"),
         ("uploaded", "0"),
         ("downloaded", "0"),
