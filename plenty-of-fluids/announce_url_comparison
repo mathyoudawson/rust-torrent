@@ -1,3 +1,5 @@
 rust-torrent announce: [Request URI: http://localhost:4040/announce?info_hash=%2526B%2512%2506%25B9%251DP%25B2%25A8%25F9%25ADYB%25FA%258F%2500%253E%25D8%25B6%2591%0A&peer_id=BLARGH1234&port=6881&uploaded=0&downloaded=0&compact=0&left=177]
+new announce:                        http://localhost:4040/announce?info_hash=%2F%BA%7F%3ELC%F2%1B%96%9B%E7%930%A2%2AX%E93%B0%95%0A&peer_id=BLARGH1234&port=6881&uploaded=0&downloaded=0&compact=0&left=177
+
 
 transmission announce: [Request URI: http://localhost:4040/announce?info_hash=%3f%ffd%e5l%e4%c3%d8%85g%09%8f-%85%16s%c5%b2%16j&peer_id=-TR2940-xxmdppmncqwm&port=51413&uploaded=0&downloaded=0&left=177&numwant=80&key=11679c63&compact=1&supportcrypto=1&event=started]
