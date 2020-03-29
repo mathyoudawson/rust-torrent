@@ -48,29 +48,17 @@ fn main() {
 }
 
 fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, String> {
-    println!("bencode is : {}", bencode);
-    let mut top_level_dict = if let Bencode::Dict(dict) = bencode {
+    let top_level_dict = if let Bencode::Dict(dict) = bencode {
         dict.clone()
     } else {
         panic!("top  level bencode should be a dict");
     };
 
-    let info_bytes: Vec<u8> = get_field_as_bencoded_bytes(&top_level_dict, "info")?;
+    let info_hashish = top_level_dict.get(&bencode::util::ByteString::from_str("info")).unwrap();
 
-    // compute sha
-    let mut hasher = Sha1::new();
-    hasher.input(info_bytes);
+    let info_dict = if let Bencode::Dict(ref dict) = info_hashish { dict.clone() } else { panic!("Could not find info dict") };
 
-    let info_hash = hasher.result().to_vec();
-    println!("new info hash: {:?}", info_hash);
-
-     println!("tld: {}", bencode);
-    let announce = top_level_dict.remove(&bencode::util::ByteString::from_str("announce")).unwrap().to_string();
-    let info_hashish = top_level_dict.remove(&bencode::util::ByteString::from_str("info")).unwrap();
-
-    let mut info_dict = if let Bencode::Dict(ref dict) = info_hashish { dict.clone() } else { panic!("darn") };
-
-    let pieces = match info_dict.remove(&bencode::util::ByteString::from_str("pieces")).unwrap() {
+    let pieces = match info_dict.get(&bencode::util::ByteString::from_str("pieces")).unwrap() {
         bencode::Bencode::ByteString(v) => { 
             let mut pieces_array = [0u8; 20];
             for (place, element) in pieces_array.iter_mut().zip(v.iter()) {
@@ -82,32 +70,49 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
         _ => panic!("Not a bytestring"),
     };
 
-    let piece_length =  match info_dict.remove(&bencode::util::ByteString::from_str("piece length")).unwrap() {
-        bencode::Bencode::Number(n) => n,
-        _ => panic!("Not a number"),
-    };
-
-    let info_name = info_dict.remove(&bencode::util::ByteString::from_str("name")).unwrap().to_string();
-
-    let info_length: i64 = match info_dict.remove(&bencode::util::ByteString::from_str("length")).unwrap() {
-        Bencode::Number(n) => n,
-        _ => panic!("invalid torrent file length"),
-    };
-
-    let mut metadata = TorrentMetadata {
-        announce,
+    let info_hash = compute_sha1_hash(get_field_as_bencoded_bytes(&top_level_dict, "info")?);
+    let metadata = TorrentMetadata {
+        announce: get_string_from_bencode(&top_level_dict, "announce"),
         info_hash,
         info: TorrentMetadataInfo  {
-            length: info_length,
-            name: info_name,
-            piece_length: piece_length,
+            length: get_number_from_bencode(&info_dict, "length"),
+            name: get_string_from_bencode(&info_dict, "name"),
+            piece_length: get_number_from_bencode(&info_dict, "piece length"),
             pieces: pieces,
         },
     };
 
-    metadata.announce = "http://localhost:4040/announce".to_owned();
 
     Ok(metadata)
+}
+
+fn compute_sha1_hash(input: Vec<u8>) -> Vec<u8> {
+    let mut hasher = Sha1::new();
+    hasher.input(input);
+
+    hasher.result().to_vec()
+}
+
+fn get_number_from_bencode(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> i64 {
+    let bencode = get_field(dict, field).unwrap();
+
+    match bencode {
+        Bencode::Number(n) => n,
+        _ => panic!("Expected Number!"),
+    }
+}
+
+fn get_string_from_bencode(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> String {
+    let bencode = get_field(dict, field).unwrap();
+
+    bencode.to_string()
+}
+
+fn get_field(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> Result<bencode::Bencode, String> {
+    match dict.get(&ByteString::from_str(field)) {
+        Some(a) => Ok(a.to_owned()),
+        None => return Err("Could not find field".to_string()),
+    }
 }
 
 fn get_field_as_bencoded_bytes(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> Result<Vec<u8>, String> {
@@ -200,26 +205,15 @@ fn execute_tracker_query(query: url::Url) -> Result<String, reqwest::Error> {
     Ok(response.unwrap())
 }
 
-
-fn bytes_to_hash_str(data: &[u8]) -> String {
-    // println!("data: {:?}", data);
-    let pieces: Vec<String> = data.iter().map(|byte| {
-        format!("%{:02x}", byte)
-    }).collect();
-
-    // println!("pieces: {:?}", pieces);
-    pieces.join("")
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
 
-    #[test]
-    fn url_encoding()  {
-        assert_eq!(bytes_to_hash_str(b"hello"),
-        "%68%65%6c%6c%6f");
-
-    }
+    // #[test]
+    // fn url_encoding()  {
+    //     assert_eq!(bytes_to_hash_str(b"hello"),
+    //     "%68%65%6c%6c%6f");
+    //
+    // }
 }
 
