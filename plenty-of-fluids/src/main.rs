@@ -6,7 +6,7 @@ use url::Url;
 use std::collections::*;
 use std::io::prelude::*;
 use std::process::Command;
-use sha1::{Sha1, Digest};
+mod hash;
 
 use std::fs;
 
@@ -54,9 +54,8 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
         panic!("top  level bencode should be a dict");
     };
 
-    let info_hashish = top_level_dict.get(&bencode::util::ByteString::from_str("info")).unwrap();
-
-    let info_dict = if let Bencode::Dict(ref dict) = info_hashish { dict.clone() } else { panic!("Could not find info dict") };
+    let info_dict = top_level_dict.get(&bencode::util::ByteString::from_str("info")).unwrap();
+    let info_dict = if let Bencode::Dict(ref dict) = info_dict { dict.clone() } else { panic!("Could not find info dict") };
 
     let pieces = match info_dict.get(&bencode::util::ByteString::from_str("pieces")).unwrap() {
         bencode::Bencode::ByteString(v) => { 
@@ -70,10 +69,11 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
         _ => panic!("Not a bytestring"),
     };
 
-    let info_hash = compute_sha1_hash(get_field_as_bencoded_bytes(&top_level_dict, "info")?);
+    let info_bytes = get_field_as_bencoded_bytes(&top_level_dict, "info")?;
+
     let metadata = TorrentMetadata {
         announce: get_string_from_bencode(&top_level_dict, "announce"),
-        info_hash,
+        info_hash: hash::compute_sha1_hash(info_bytes),
         info: TorrentMetadataInfo  {
             length: get_number_from_bencode(&info_dict, "length"),
             name: get_string_from_bencode(&info_dict, "name"),
@@ -84,13 +84,6 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
 
 
     Ok(metadata)
-}
-
-fn compute_sha1_hash(input: Vec<u8>) -> Vec<u8> {
-    let mut hasher = Sha1::new();
-    hasher.input(input);
-
-    hasher.result().to_vec()
 }
 
 fn get_number_from_bencode(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> i64 {
