@@ -1,12 +1,11 @@
 extern crate bencode;
 
 use bencode::{Bencode};
-use bencode::util::ByteString;
 use url::Url;
-use std::collections::*;
 use std::io::prelude::*;
 use std::process::Command;
 mod hash;
+mod decoder;
 
 use std::fs;
 
@@ -69,15 +68,15 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
         _ => panic!("Not a bytestring"),
     };
 
-    let info_bytes = get_field_as_bencoded_bytes(&top_level_dict, "info")?;
+    let info_bytes = decoder::get_field_as_bencoded_bytes(&top_level_dict, "info")?;
 
     let metadata = TorrentMetadata {
-        announce: get_string_from_bencode(&top_level_dict, "announce"),
+        announce: decoder::get_string_from_bencode(&top_level_dict, "announce"),
         info_hash: hash::compute_sha1_hash(info_bytes),
         info: TorrentMetadataInfo  {
-            length: get_number_from_bencode(&info_dict, "length"),
-            name: get_string_from_bencode(&info_dict, "name"),
-            piece_length: get_number_from_bencode(&info_dict, "piece length"),
+            length: decoder::get_number_from_bencode(&info_dict, "length"),
+            name: decoder::get_string_from_bencode(&info_dict, "name"),
+            piece_length: decoder::get_number_from_bencode(&info_dict, "piece length"),
             pieces: pieces,
         },
     };
@@ -85,48 +84,6 @@ fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, Str
 
     Ok(metadata)
 }
-
-fn get_number_from_bencode(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> i64 {
-    let bencode = get_field(dict, field).unwrap();
-
-    match bencode {
-        Bencode::Number(n) => n,
-        _ => panic!("Expected Number!"),
-    }
-}
-
-fn get_string_from_bencode(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> String {
-    let bencode = get_field(dict, field).unwrap();
-
-    bencode.to_string()
-}
-
-fn get_field(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> Result<bencode::Bencode, String> {
-    match dict.get(&ByteString::from_str(field)) {
-        Some(a) => Ok(a.to_owned()),
-        None => return Err("Could not find field".to_string()),
-    }
-}
-
-fn get_field_as_bencoded_bytes(dict: &BTreeMap<bencode::util::ByteString, bencode::Bencode>, field: &str) -> Result<Vec<u8>, String> {
-    let raw_field = match dict.get(&ByteString::from_str(field)) {
-        Some(a) => a,
-        None => return Err("Could not find field".to_string()),
-    };
-
-    Ok(raw_field.to_bytes().unwrap())
-}
-
-// fn parse_single_or_multi_file_metadata(bencode: &bencode::Bencode)
-//     -> Result<String, String> {
-//         match bencode {
-//             Bencode::Dict(entries) => {
-//                 panic!("entries: {:#?}", entries);
-//             },
-//
-//             _ => panic!("corrupted"),
-//         }
-// }
 
 fn dirty_ruby_urlencode_hack(bytes: &[u8])
     -> String {
@@ -197,16 +154,3 @@ fn execute_tracker_query(query: url::Url) -> Result<String, reqwest::Error> {
 
     Ok(response.unwrap())
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    // #[test]
-    // fn url_encoding()  {
-    //     assert_eq!(bytes_to_hash_str(b"hello"),
-    //     "%68%65%6c%6c%6f");
-    //
-    // }
-}
-
