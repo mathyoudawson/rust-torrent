@@ -66,12 +66,12 @@ mod test {
         assert_eq!(get_field(&dict, "test"), Result::Ok(num))
     }
 
-    // #[test]
-    // fn get_correct_field_as_bencoded_bytes(){
-    //     let mut dict = BTreeMap::new();
-    //     let bytes = bencode::Bencode::ByteString(vec![0u8; 20]);
-    //     dict.insert(ByteString::from_str("test"), bytes);
-    //
-    //     assert_eq!(get_field_as_bencoded_bytes(&dict, "test"), bytes?)
-    // }
+    #[test]
+    fn get_correct_field_as_bencoded_bytes(){
+        let mut dict = BTreeMap::new();
+        let bytes = bencode::Bencode::ByteString(vec![0u8; 20]);
+        dict.insert(ByteString::from_str("test"), bytes);
+
+        assert_eq!(get_field_as_bencoded_bytes(&dict, "test").is_ok(), true)
+    }
 }
