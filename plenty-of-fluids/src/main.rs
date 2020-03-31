@@ -1,28 +1,13 @@
 extern crate bencode;
 
-use bencode::{Bencode};
 use url::Url;
 use std::io::prelude::*;
 use std::process::Command;
 mod hash;
 mod decoder;
+mod parser;
 
 use std::fs;
-
-#[derive(RustcEncodable, RustcDecodable, PartialEq, Debug)]
-struct TorrentMetadata{
-    info: TorrentMetadataInfo,
-    info_hash: Vec<u8>,
-    announce: String,
-}
-
-#[derive(RustcEncodable, RustcDecodable, PartialEq, Debug)]
-struct TorrentMetadataInfo {
-    pieces: [u8; 20],
-    piece_length: i64,
-    length:      i64,
-    name:        String,
-}
 
 fn main() {
     //const TORRENT_PATH: &str = "src/archlinux-2020.02.01-x86_64.iso.torrent";
@@ -30,10 +15,7 @@ fn main() {
 
     let bencoded_metadata: Vec<u8> = fs::read(TORRENT_PATH).unwrap();
 
-    let bencode: bencode::Bencode = bencode::from_vec(bencoded_metadata).unwrap();
-
-    let metadata = parse_torrent_file(&bencode).unwrap();
-    // println!("Parsed torrent file: {:?}", metadata);
+    let metadata = parser::parse_bencoded_torrent(bencoded_metadata).unwrap();
 
     let tracker_query = match build_tracker_query(metadata){
         Ok(query) => query,
@@ -44,45 +26,6 @@ fn main() {
         Ok(response) => println!("Successful query: {}", response),
         Err(e) => panic!("Request error: {}", e),
     }
-}
-
-fn parse_torrent_file(bencode: &bencode::Bencode) -> Result<TorrentMetadata, String> {
-    let top_level_dict = if let Bencode::Dict(dict) = bencode {
-        dict.clone()
-    } else {
-        panic!("top  level bencode should be a dict");
-    };
-
-    let info_dict = top_level_dict.get(&bencode::util::ByteString::from_str("info")).unwrap();
-    let info_dict = if let Bencode::Dict(ref dict) = info_dict { dict.clone() } else { panic!("Could not find info dict") };
-
-    let pieces = match info_dict.get(&bencode::util::ByteString::from_str("pieces")).unwrap() {
-        bencode::Bencode::ByteString(v) => { 
-            let mut pieces_array = [0u8; 20];
-            for (place, element) in pieces_array.iter_mut().zip(v.iter()) {
-                *place = *element;
-            }
-            pieces_array
-
-        },
-        _ => panic!("Not a bytestring"),
-    };
-
-    let info_bytes = decoder::get_field_as_bencoded_bytes(&top_level_dict, "info")?;
-
-    let metadata = TorrentMetadata {
-        announce: decoder::get_string_from_bencode(&top_level_dict, "announce"),
-        info_hash: hash::compute_sha1_hash(info_bytes),
-        info: TorrentMetadataInfo  {
-            length: decoder::get_number_from_bencode(&info_dict, "length"),
-            name: decoder::get_string_from_bencode(&info_dict, "name"),
-            piece_length: decoder::get_number_from_bencode(&info_dict, "piece length"),
-            pieces: pieces,
-        },
-    };
-
-
-    Ok(metadata)
 }
 
 fn dirty_ruby_urlencode_hack(bytes: &[u8])
@@ -112,7 +55,7 @@ fn dirty_ruby_urlencode_hack(bytes: &[u8])
 }
 
 
-fn build_tracker_query(torrent: TorrentMetadata) ->  Result<url::Url, reqwest::Error> { // reqwest::Error> {
+fn build_tracker_query(torrent: parser::TorrentMetadata) ->  Result<url::Url, reqwest::Error> { // reqwest::Error> {
     let formatted_url = if torrent.announce.starts_with("s") {
         let mut url: String = torrent.announce.chars().skip(2).collect();
         url.truncate(url.len() - 1);
