@@ -23,7 +23,25 @@ pub fn query_tracker(metadata: parser::TorrentMetadata) -> Result<String, reqwes
 
     println!("here is response: {:?}", response);
 
-    let bencoded_response = bencode::from_vec(response.as_bytes().to_vec()).unwrap(); 
+    let bytes = response.as_bytes();
+
+    let bencoded_response = match bencode::from_buffer(bytes){
+        Ok(r) => {
+            match r {
+                bencode::Bencode::ByteString(b) => b,
+                _ => panic!("Not a ByteString bro"),
+            }
+        },
+        Err(e) => panic!(e),
+    };
+
+
+    println!("Bencode bytestring: {:?}", bencoded_response);
+
+    let bencoded_response = match bencode::from_vec(response.as_bytes().to_vec()){
+        Ok(a) => a,
+        Err(e) => panic!(e),
+    }; 
 
     let response_dict = if let Bencode::Dict(dict) = bencoded_response {
         dict.clone()
@@ -131,7 +149,7 @@ fn build_tracker_query(metadata: parser::TorrentMetadata) -> Result<String, reqw
 
 fn execute_tracker_query(query: String) -> Result<String, reqwest::Error> {
     let response = reqwest::blocking::get(&query)?
-        .text();
+        .text_with_charset("utf-8");
 
     Ok(response.unwrap())
 }
