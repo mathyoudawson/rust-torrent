@@ -4,6 +4,7 @@ mod hash;
 mod decoder;
 mod parser;
 mod tracker;
+mod peer_connection;
 
 use std::fs;
 
@@ -18,12 +19,18 @@ fn main() {
 
     let metadata = parser::parse_bencoded_torrent(bencoded_metadata).unwrap();
 
-    match tracker::get_peers(metadata) {
+    let _peers = match tracker::get_peers(metadata) {
         Ok(peers) => {
-            for peer in peers {
+            for peer in &peers {
                 println!{"{:?}", peer};
-            } 
+
+                match peer_connection::initiate_handshake(&peer) {
+                    Ok(()) => println!("Successfull handshake"),
+                    Err(_e) => println!("Some Err"),
+                }
+            }
+            peers
         },
         Err(e) => panic!(e),
-    }
+    };
 }

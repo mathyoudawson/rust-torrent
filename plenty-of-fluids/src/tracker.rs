@@ -5,10 +5,11 @@ use url::form_urlencoded;
 use std::borrow::Cow;
 use bencode::{Bencode};
 use curl::easy::Easy;
+use std::net::Ipv4Addr;
 
 #[derive(Debug)]
-pub struct Peer {
-    pub ip: String, // url crate may give us another type here
+pub struct Peer { // Peer should probably be in its own file as trackers and peers are different
+    pub ip: Ipv4Addr, // url crate may give us another type here
     pub port: u16,
 }
 
@@ -22,7 +23,7 @@ pub fn get_peers(metadata: parser::TorrentMetadata) -> Result<Vec<Peer>, String>
     let response_dict = if let Bencode::Dict(dict) = bencoded_response {
         dict.clone()
     } else {
-        panic!("top  level bencode should be a dict");
+        panic!("Reponse should be a dict!");
     };
 
     let peer_list = match response_dict.get(&bencode::util::ByteString::from_str("peers")).unwrap() {
@@ -45,7 +46,7 @@ fn unmarshal_peers(peers: &Vec<u8>) -> Result<Vec<Peer>, String> {
 
     for chunk in peer_chunks {
         unmarshalled_peers.push(Peer{
-            ip: join_nums(chunk[0..4].to_vec(), "."),
+            ip: Ipv4Addr::new(chunk[0], chunk[1], chunk[2], chunk[3]),
             port: u16::from_be_bytes(try_into_array(&chunk[4..])),
         });
     }
@@ -131,8 +132,8 @@ mod test {
     #[test]
     fn unmarshals_bytes_into_peers() {
         let bytes = vec![91, 8, 150, 67, 200, 213, 79, 68, 128, 152, 128, 137];
-        let peers = vec![Peer{ip: "91.8.150.67".to_string(), port: 51413},
-                         Peer{ip: "79.68.128.152".to_string(), port: 32905}];
+        let peers = vec![Peer{ip: Ipv4Addr::new(91, 8, 150, 67), port: 51413},
+                         Peer{ip: Ipv4Addr::new(79, 68, 128, 152), port: 32905}];
 
         let unmarshalled_peers = unmarshal_peers(&bytes).unwrap();
         assert_eq!(unmarshalled_peers[0].ip, peers[0].ip);
