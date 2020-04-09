@@ -19,12 +19,12 @@ fn main() {
 
     let metadata = parser::parse_bencoded_torrent(bencoded_metadata).unwrap();
 
-    let _peers = match tracker::get_peers(metadata) {
+    let _peers = match tracker::get_peers(&metadata) {
         Ok(peers) => {
             for peer in &peers {
                 println!{"{:?}", peer};
 
-                match peer_connection::initiate_handshake(&peer) {
+                match peer_connection::initiate_handshake(&peer, &metadata) {
                     Ok(()) => println!("Successfull handshake"),
                     Err(_e) => println!("Some Err"),
                 }

@@ -13,7 +13,7 @@ pub struct Peer { // Peer should probably be in its own file as trackers and pee
     pub port: u16,
 }
 
-pub fn get_peers(metadata: parser::TorrentMetadata) -> Result<Vec<Peer>, String> {
+pub fn get_peers(metadata: &parser::TorrentMetadata) -> Result<Vec<Peer>, String> {
     let query = build_tracker_query(metadata)?;
 
     let response_bytes = execute_tracker_query(query).unwrap();
@@ -70,7 +70,7 @@ fn join_nums(nums: Vec<u8>, sep: &str) -> String {
    nums_as_strings.join(sep)
 }
 
-fn build_tracker_query(metadata: parser::TorrentMetadata) -> Result<String, String> {
+fn build_tracker_query(metadata: &parser::TorrentMetadata) -> Result<String, String> {
     let formatted_url = if metadata.announce.starts_with("s") {
         let mut url: String = metadata.announce.chars().skip(2).collect();
         url.truncate(url.len() - 1);
