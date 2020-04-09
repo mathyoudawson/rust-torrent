@@ -2,6 +2,7 @@ use std::net::{TcpStream};
 use std::time::Duration;
 use std::net::{SocketAddrV4, SocketAddr};
 use std::io::prelude::*;
+use std::str::from_utf8;
 
 use super::tracker;
 use super::parser;
@@ -43,14 +44,36 @@ pub fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetada
         peer_id: "plenty-of-fluid00001".to_string(),
     };
 
-    tcp_stream.write(handshake.to_bytes().as_slice())?;
-    println!("Awaiting response");
-    let response = tcp_stream.read(&mut vec![0; 128])?;
-    println!("Response is: {:?}", response);
+    let handshake_bytes = handshake.to_bytes().clone();
 
+    tcp_stream.write(handshake_bytes.as_slice())?;
+    println!("Awaiting response");
+
+    // using 16 byte buffer, it works. dont know why other sizes don't...
+    let mut data = [0u8; 16];
+
+    // We can't always assume that we recieve a complete reponse
+    // Currently we are just validating that the response matches our request.
+    // In the future we should try append reponses until we have a full valid reponse.
+    match tcp_stream.read(&mut data) {
+        Ok(_) => {
+            if eq(&data, handshake_bytes.as_slice()) {
+                println!("Reply is ok!");
+            } else {
+                let text = from_utf8(&data).unwrap();
+                println!("Unexpected reply: {}", text);
+            }
+        },
+        Err(e) => {
+            println!("Failed to receive data: {}", e);
+        }
+    }
     Ok(())
 }
 
+fn eq(arr: &[u8], other_arr: &[u8]) -> bool {
+    arr.iter().zip(other_arr.iter()).all(|(a,b)| a == b) 
+}
 
 
 #[cfg(test)]
