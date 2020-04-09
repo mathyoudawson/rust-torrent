@@ -25,7 +25,7 @@ impl Handshake {
     }
 }
 
-pub fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) -> std::io::Result<()> {
+pub fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
     let socket = SocketAddr::from(SocketAddrV4::new(peer.ip, peer.port));
 
     let mut tcp_stream = match TcpStream::connect_timeout(&socket, Duration::from_secs(3)) {
@@ -55,10 +55,13 @@ pub fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetada
     // We can't always assume that we recieve a complete reponse
     // Currently we are just validating that the response matches our request.
     // In the future we should try append reponses until we have a full valid reponse.
+    let mut successful_handshake = false;
+
     match tcp_stream.read(&mut data) {
         Ok(_) => {
             if eq(&data, handshake_bytes.as_slice()) {
                 println!("Reply is ok!");
+                successful_handshake = true;
             } else {
                 let text = from_utf8(&data).unwrap();
                 println!("Unexpected reply: {}", text);
@@ -68,7 +71,12 @@ pub fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetada
             println!("Failed to receive data: {}", e);
         }
     }
-    Ok(())
+
+    if successful_handshake {
+        Ok(tcp_stream)
+    } else {
+        Err(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "Could not complete handshake with peer."))
+    }
 }
 
 fn eq(arr: &[u8], other_arr: &[u8]) -> bool {

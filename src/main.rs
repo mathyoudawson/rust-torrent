@@ -7,6 +7,7 @@ mod tracker;
 mod peer_connection;
 
 use std::fs;
+use std::net::{TcpStream};
 
 fn main() {
     const TORRENT_PATH: &str = "src/archlinux-2020.02.01-x86_64.iso.torrent";
@@ -19,18 +20,23 @@ fn main() {
 
     let metadata = parser::parse_bencoded_torrent(bencoded_metadata).unwrap();
 
-    let _peers = match tracker::get_peers(&metadata) {
-        Ok(peers) => {
-            for peer in &peers {
-                println!{"{:?}", peer};
-
-                match peer_connection::initiate_handshake(&peer, &metadata) {
-                    Ok(()) => println!("Successfull handshake"),
-                    Err(_e) => println!("Some Err"),
-                }
-            }
-            peers
-        },
+    let peers = match tracker::get_peers(&metadata) {
+        Ok(peers) => peers,
         Err(e) => panic!(e),
     };
+
+    // TODO: move this logic somewhere else.
+    // Maybe in peer_connection itself.
+    let mut tcp_streams: Vec<TcpStream> = Vec::new();
+
+    for peer in &peers {
+        println!{"{:?}", peer};
+
+        match peer_connection::initiate_handshake(&peer, &metadata) {
+            Ok(stream) => tcp_streams.push(stream),
+            Err(e) => println!("Error: {}", e),
+        }
+    }
+
+    println!("{} peers ready for communication!", tcp_streams.len());
 }
