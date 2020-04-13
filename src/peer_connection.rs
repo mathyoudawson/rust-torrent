@@ -1,8 +1,6 @@
-use std::net::{TcpStream};
 use std::time::Duration;
-use std::net::{SocketAddrV4, SocketAddr};
+use std::net::{SocketAddrV4, SocketAddr, TcpStream};
 use std::io::prelude::*;
-use std::str::from_utf8;
 
 use super::tracker;
 use super::parser;
@@ -49,40 +47,49 @@ pub fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetada
     tcp_stream.write(handshake_bytes.as_slice())?;
     println!("Awaiting response");
 
-    // using 16 byte buffer, it works. dont know why other sizes don't...
-    let mut data = [0u8; 16];
+    match receive_handshake(&mut tcp_stream, metadata.info_hash.to_owned()) {
+        Ok(()) => return Ok(tcp_stream),
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e)),
+    }
+}
 
-    // We can't always assume that we recieve a complete reponse
-    // Currently we are just validating that the response matches our request.
-    // In the future we should try append reponses until we have a full valid reponse.
-    let mut successful_handshake = false;
+fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(), String> {
+    let pstrlen = read_n(stream, 1)?;
+    read_n(stream, pstrlen[0] as u32)?; // ignore pstr
+    read_n(stream, 8)?; // ignore reserved
+    let info_hash = read_n(stream, 20)?;
+    let _peer_id = read_n(stream, 20)?;
 
-    match tcp_stream.read(&mut data) {
-        Ok(_) => {
-            if eq(&data, handshake_bytes.as_slice()) {
-                println!("Reply is ok!");
-                successful_handshake = true;
-            } else {
-                let text = from_utf8(&data).unwrap();
-                println!("Unexpected reply: {}", text);
-            }
-        },
-        Err(e) => {
-            println!("Failed to receive data: {}", e);
+    {
+        // validate info hash
+        if info_hash != our_info_hash
+        {
+            return Err("Invalid info hash".to_string());
         }
     }
 
-    if successful_handshake {
-        Ok(tcp_stream)
-    } else {
-        Err(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "Could not complete handshake with peer."))
+    Ok(())
+}
+
+fn read_n(stream: &mut TcpStream, bytes_to_read: u32) -> Result<Vec<u8>, String> {
+    let mut buf = vec![];
+    read_n_to_buf(stream, &mut buf, bytes_to_read)?;
+    Ok(buf)
+}
+
+fn read_n_to_buf(stream: &mut TcpStream, buf: &mut Vec<u8>, bytes_to_read: u32) -> Result<(), String> {
+    if bytes_to_read == 0 {
+        return Ok(());
+    }
+
+    let bytes_read = stream.take(bytes_to_read as u64).read_to_end(buf);
+    match bytes_read {
+        Ok(0) => Err("Socket Closed".to_string()),
+        Ok(n) if n == bytes_to_read as usize => Ok(()),
+        Ok(n) => read_n_to_buf(stream, buf, bytes_to_read - n as u32),
+        Err(e) => Err(e.to_string())
     }
 }
-
-fn eq(arr: &[u8], other_arr: &[u8]) -> bool {
-    arr.iter().zip(other_arr.iter()).all(|(a,b)| a == b) 
-}
-
 
 #[cfg(test)]
 mod test {

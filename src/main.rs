@@ -33,7 +33,9 @@ fn main() {
         println!{"{:?}", peer};
 
         match peer_connection::initiate_handshake(&peer, &metadata) {
-            Ok(stream) => tcp_streams.push(stream),
+            Ok(stream) => { 
+                println!("TcpStream connected!");
+                tcp_streams.push(stream); },
             Err(e) => println!("Error: {}", e),
         }
     }
