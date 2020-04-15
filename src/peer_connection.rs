@@ -4,6 +4,7 @@ use std::io::prelude::*;
 
 use super::tracker;
 use super::parser;
+use super::message;
 
 struct Handshake {
    pstr: String,
@@ -69,6 +70,33 @@ fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(
     }
 
     Ok(())
+}
+
+pub fn receive_message(stream: TcpStream) -> Result<message::Message, String> {
+    let mut stream = stream;
+    // first 4 bytes indicate the size of the message
+    let message_size = bytes_to_u32(&read_n(&mut stream, 4)?);
+
+    if message_size > 0 {
+      let message = &read_n(&mut stream, message_size)?;
+      Ok(message::identify_message(message[0]))
+          // the rest of the message ([1..]) is the body which is used in some other messages
+    } else {
+       Ok(message::Message::KeepAlive) // do nothing 
+    }
+}
+
+// stole this logc - this feels weird
+const BYTE_0: u32 = 256 * 256 * 256;
+const BYTE_1: u32 = 256 * 256;
+const BYTE_2: u32 = 256;
+const BYTE_3: u32 = 1;
+
+fn bytes_to_u32(bytes: &[u8]) -> u32 {
+    bytes[0] as u32 * BYTE_0 +
+    bytes[1] as u32 * BYTE_1 +
+    bytes[2] as u32 * BYTE_2 +
+    bytes[3] as u32 * BYTE_3
 }
 
 fn read_n(stream: &mut TcpStream, bytes_to_read: u32) -> Result<Vec<u8>, String> {

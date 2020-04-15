@@ -5,6 +5,7 @@ mod decoder;
 mod parser;
 mod tracker;
 mod peer_connection;
+mod message;
 
 use std::fs;
 use std::net::{TcpStream};
@@ -41,4 +42,10 @@ fn main() {
     }
 
     println!("{} peers ready for communication!", tcp_streams.len());
+    for stream in tcp_streams {
+        match peer_connection::receive_message(stream) {
+            Ok(m) => println!("Message is: {:?}", m),
+            Err(e) => println!("Error is: {:?}", e),
+        }
+    }
 }
