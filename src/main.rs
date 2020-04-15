@@ -8,14 +8,13 @@ mod peer_connection;
 mod message;
 
 use std::fs;
-use std::net::{TcpStream};
 
 fn main() {
     const TORRENT_PATH: &str = "src/archlinux-2020.02.01-x86_64.iso.torrent";
 
     // TEST TORRENTS
-    //const TORRENT_PATH: &str = "test.torrent";
-    //const TORRENT_PATH: &str = "ubuntu-18.04.4-desktop-amd64.iso.torrent";
+    // const TORRENT_PATH: &str = "test.torrent";
+    // const TORRENT_PATH: &str = "ubuntu-18.04.4-desktop-amd64.iso.torrent";
 
     let bencoded_metadata: Vec<u8> = fs::read(TORRENT_PATH).unwrap();
 
@@ -26,26 +25,5 @@ fn main() {
         Err(e) => panic!(e),
     };
 
-    // TODO: move this logic somewhere else.
-    // Maybe in peer_connection itself.
-    let mut tcp_streams: Vec<TcpStream> = Vec::new();
-
-    for peer in &peers {
-        println!{"{:?}", peer};
-
-        match peer_connection::initiate_handshake(&peer, &metadata) {
-            Ok(stream) => { 
-                println!("TcpStream connected!");
-                tcp_streams.push(stream); },
-            Err(e) => println!("Error: {}", e),
-        }
-    }
-
-    println!("{} peers ready for communication!", tcp_streams.len());
-    for stream in tcp_streams {
-        match peer_connection::receive_message(stream) {
-            Ok(m) => println!("Message is: {:?}", m),
-            Err(e) => println!("Error is: {:?}", e),
-        }
-    }
+    peer_connection::connect_to_peers(&peers, &metadata);
 }

@@ -24,7 +24,34 @@ impl Handshake {
     }
 }
 
-pub fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
+pub fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMetadata) {
+    // we should spawn a thread for each peer - look into rayon for this
+
+    for peer in peers {
+        println!{"{:?}", peer};
+
+        // currently this sends and receives handshake
+        // perhaps these should be called independantly
+        let stream = match initiate_handshake(&peer, &metadata) {
+            Ok(stream) => { 
+                println!("TcpStream connected!");
+                stream },
+            Err(e) => { println!("Error: {}", e);
+                continue; },
+        };
+
+        // First message should always be bitfield
+        let bitfield = match receive_message(stream) {
+            Ok(m) => m,
+            Err(e) => { println!("Error: {:?}", e);
+                continue; },
+        };
+
+        message::message_handler(bitfield);
+    }
+}
+
+fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
     let socket = SocketAddr::from(SocketAddrV4::new(peer.ip, peer.port));
 
     let mut tcp_stream = match TcpStream::connect_timeout(&socket, Duration::from_secs(3)) {
@@ -72,15 +99,14 @@ fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(
     Ok(())
 }
 
-pub fn receive_message(stream: TcpStream) -> Result<message::Message, String> {
+fn receive_message(stream: TcpStream) -> Result<message::Message, String> {
     let mut stream = stream;
     // first 4 bytes indicate the size of the message
     let message_size = bytes_to_u32(&read_n(&mut stream, 4)?);
 
     if message_size > 0 {
       let message = &read_n(&mut stream, message_size)?;
-      Ok(message::identify_message(message[0]))
-          // the rest of the message ([1..]) is the body which is used in some other messages
+      Ok(message::identify_message(message[0], &message[1..]))
     } else {
        Ok(message::Message::KeepAlive) // do nothing 
     }
