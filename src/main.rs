@@ -21,10 +21,6 @@ fn main() {
 
     let metadata = parser::parse_bencoded_torrent(bencoded_metadata).unwrap();
 
-    let peers = match tracker::get_peers(&metadata) {
-        Ok(peers) => peers,
-        Err(e) => panic!(e),
-    };
-
-    peer_connection::connect_to_peers(&peers, &metadata);
+    // pass in output path at a later stage (or hardcode)
+    download::download_to_file(&metadata);
 }
