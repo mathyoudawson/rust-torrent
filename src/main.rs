@@ -6,6 +6,7 @@ mod parser;
 mod tracker;
 mod peer_connection;
 mod message;
+mod download;
 
 use std::fs;
 

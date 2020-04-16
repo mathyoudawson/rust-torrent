@@ -24,8 +24,23 @@ impl Handshake {
     }
 }
 
-pub fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMetadata) {
+struct PeerConnection {
+    stream: TcpStream,
+    bitfield: Vec<u8>,
+}
+
+impl PeerConnection {
+    pub fn new(stream: TcpStream) -> PeerConnection {
+        PeerConnection {
+            stream,
+            bitfield: Vec::new(),
+        }
+    }
+}
+
+pub fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMetadata) -> Vec<PeerConnection> {
     // we should spawn a thread for each peer - look into rayon for this
+    let mut connected_peers: Vec<PeerConnection> = Vec::new();
 
     for peer in peers {
         println!{"{:?}", peer};
@@ -41,14 +56,20 @@ pub fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMe
         };
 
         // First message should always be bitfield
-        let bitfield = match receive_message(stream) {
-            Ok(m) => m,
-            Err(e) => { println!("Error: {:?}", e);
-                continue; },
-        };
+        // let message = match receive_message(&stream) {
+        //     Ok(m) => m,
+        //     Err(e) => { println!("Error: {:?}", e);
+        //         continue; },
+        // };
+        //
+        // message::message_handler(message);
 
-        message::message_handler(bitfield);
+        let connected_peer = PeerConnection::new(stream);
+
+        connected_peers.push(connected_peer);
     }
+
+    connected_peers
 }
 
 fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
@@ -99,7 +120,7 @@ fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(
     Ok(())
 }
 
-fn receive_message(stream: TcpStream) -> Result<message::Message, String> {
+fn receive_message(stream: &TcpStream) -> Result<message::Message, String> {
     let mut stream = stream;
     // first 4 bytes indicate the size of the message
     let message_size = bytes_to_u32(&read_n(&mut stream, 4)?);

@@ -33,13 +33,14 @@ pub fn identify_message(message_id: u8, message_body: &[u8]) -> Message {
     }
 }
 
-pub fn message_handler(msg: Message) {
+pub fn message_handler(msg: Message) -> Vec<u8> {
     match msg {
         Message::Bitfield(body) => bitfield_handler(body),
         _ => panic!("Unimplemented handler for: {:?}", msg),
     }
 }
 
-fn bitfield_handler(bitfield: Vec<u8>) {
+fn bitfield_handler(bitfield: Vec<u8>) -> Vec<u8> {
     println!("Bitfield: {:?}", bitfield);
+    bitfield
 }
