@@ -66,8 +66,7 @@ mod test {
 
     #[test]
     fn correctly_parse_torrent_file()  {
-        let bencoded_metadata: Vec<u8> = fs::read("test.torrent").unwrap();
-
+        let bencoded_metadata: Vec<u8> = crate::torrent_files::TEST.to_owned();
         assert_eq!(parse_bencoded_torrent(bencoded_metadata).is_ok(), true)
     }
 }
