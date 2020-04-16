@@ -8,3 +8,4 @@ pub fn download_to_file(metadata: &parser::TorrentMetadata) {
 
     let connected_peers = peer_connection::connect_to_peers(&peers, &metadata);
 }
+

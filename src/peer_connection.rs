@@ -24,7 +24,7 @@ impl Handshake {
     }
 }
 
-struct PeerConnection {
+pub struct PeerConnection {
     stream: TcpStream,
     bitfield: Vec<u8>,
 }
@@ -55,13 +55,13 @@ pub fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMe
                 continue; },
         };
 
-        // First message should always be bitfield
-        // let message = match receive_message(&stream) {
+        //First message should always be bitfield
+        // let message = match receive_message(stream) {
         //     Ok(m) => m,
         //     Err(e) => { println!("Error: {:?}", e);
         //         continue; },
         // };
-        //
+
         // message::message_handler(message);
 
         let connected_peer = PeerConnection::new(stream);
@@ -120,7 +120,7 @@ fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(
     Ok(())
 }
 
-fn receive_message(stream: &TcpStream) -> Result<message::Message, String> {
+fn receive_message(stream: TcpStream) -> Result<message::Message, String> {
     let mut stream = stream;
     // first 4 bytes indicate the size of the message
     let message_size = bytes_to_u32(&read_n(&mut stream, 4)?);
