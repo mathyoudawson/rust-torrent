@@ -3,6 +3,7 @@ use std::net::{SocketAddrV4, SocketAddr};
 use std::io::prelude::*;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
+use tokio::sync::mpsc;
 
 use super::tracker;
 use super::parser;
@@ -27,20 +28,82 @@ impl Handshake {
 }
 
 pub struct PeerConnection {
-    stream: TcpStream,
+    // stream: TcpStream,
     bitfield: Vec<u8>,
+    outgoing_tx: mpsc::Sender<message::Message>,
 }
 
 pub struct PeerConnections {
     connections: Vec<PeerConnection>,
+    peer_incoming_rxs: Vec<mpsc::Receiver<message::Message>>,
 }
 
 impl PeerConnection {
-    pub fn new(stream: TcpStream) -> PeerConnection {
-        PeerConnection {
-            stream,
+    pub fn new(peer: &tracker::Peer,
+               metadata: &parser::TorrentMetadata) -> (PeerConnection, mpsc::Receiver<message::Message>) {
+        let (incoming_tx, incoming_rx) = mpsc::channel(1024);
+        let (outgoing_tx, outgoing_rx) = mpsc::channel(1024);
+
+        let socket_addr = SocketAddr::from(SocketAddrV4::new(peer.ip, peer.port));
+        tokio::spawn(peer_connection_background(socket_addr.clone(), metadata.clone(), incoming_tx, outgoing_rx));
+
+        (PeerConnection {
+            // stream,
             bitfield: Vec::new(),
+            outgoing_tx,
+        }, incoming_rx)
+    }
+
+}
+
+async fn peer_connection_background(socket_addr: SocketAddr,
+                                    metadata: parser::TorrentMetadata,
+                                    mut incoming_tx: mpsc::Sender<message::Message>,
+                                    mut outgoing_rx: mpsc::Receiver<message::Message>)
+    -> Result<(), String> {
+    let mut tcp_stream = perform_handshake(&socket_addr, &metadata).await.map_err(|e| e.to_string())?;
+
+    loop {
+        while let Some(outgoing_message) = outgoing_rx.try_recv().ok() {
+            println!("[unimplemented] send_message {:?}", outgoing_message);
         }
+
+        let message = receive_message(&mut tcp_stream).await?;
+        println!("[info] received peer message: {:?}", message);
+
+        incoming_tx.send(message).await.unwrap();
+    }
+}
+
+struct ReceivedMessages {
+    peer_rxs: Vec<mpsc::Receiver<message::Message>>,
+}
+
+impl PeerConnections {
+    pub fn received_messages(&mut self) -> impl futures::Stream<Item=message::Message> {
+        assert!(!self.peer_incoming_rxs.is_empty(), "you are already listening to received messages");
+
+        ReceivedMessages { peer_rxs: std::mem::replace(&mut self.peer_incoming_rxs, Vec::new()) }
+    }
+}
+
+impl futures::Stream for ReceivedMessages {
+    type Item = message::Message;
+
+    fn poll_next(mut self: std::pin::Pin<&mut Self>, _context: &mut std::task::Context)
+        -> std::task::Poll<Option<message::Message>> {
+        for peer in self.peer_rxs.iter_mut() {
+            println!("pollig peer");
+
+            if let Some(message) = peer.try_recv().ok() {
+                println!("    -> has message");
+                return std::task::Poll::Ready(Some(message));
+            } else {
+                println!("    -> has message");
+            }
+        }
+
+        std::task::Poll::Pending
     }
 }
 
@@ -48,19 +111,13 @@ pub async fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::Tor
     -> Result<PeerConnections, std::io::Error> {
     // we should spawn a thread for each peer - look into rayon for this
     let mut connected_peers: Vec<PeerConnection> = Vec::new();
+    let mut peer_rxs = Vec::new();
 
     for peer in peers {
         println!{"{:?}", peer};
 
         // currently this sends and receives handshake
         // perhaps these should be called independantly
-        let stream = match perform_handshake(&peer, &metadata).await {
-            Ok(stream) => {
-                println!("TcpStream connected!");
-                stream },
-            Err(e) => { println!("Error: {}", e);
-                continue; },
-        };
 
         //First message should always be bitfield
         // let message = match receive_message(stream) {
@@ -71,20 +128,21 @@ pub async fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::Tor
 
         // message::message_handler(message);
 
-        let connected_peer = PeerConnection::new(stream);
+        let (connected_peer, incoming_rx) = PeerConnection::new(peer, metadata);
 
         connected_peers.push(connected_peer);
+        peer_rxs.push(incoming_rx);
     }
 
     Ok(PeerConnections {
-        connections: connected_peers
+        connections: connected_peers,
+        peer_incoming_rxs: peer_rxs,
     })
 }
 
-async fn perform_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
-    let socket_addr = SocketAddr::from(SocketAddrV4::new(peer.ip, peer.port));
+async fn perform_handshake(socket_addr: &SocketAddr, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
 
-    let mut tcp_stream: tokio::net::TcpStream = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&socket_addr)).await??;
+    let mut tcp_stream: tokio::net::TcpStream = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(socket_addr)).await??;
 
     const DEFAULT_PSTR: &str = "BitTorrent protocol";
 
@@ -123,7 +181,7 @@ async fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Re
     Ok(())
 }
 
-async fn receive_message(stream: TcpStream) -> Result<message::Message, String> {
+async fn receive_message(stream: &mut TcpStream) -> Result<message::Message, String> {
     let mut stream = stream;
     // first 4 bytes indicate the size of the message
     let message_size = bytes_to_u32(&read_n(&mut stream, 4).await?);
