@@ -1,6 +1,5 @@
 **/logs
-**/target/debug
 .DS_Store
 /downloads
-/target
+/target/
 /tmp
