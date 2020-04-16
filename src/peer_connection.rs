@@ -1,6 +1,8 @@
 use std::time::Duration;
-use std::net::{SocketAddrV4, SocketAddr, TcpStream};
+use std::net::{SocketAddrV4, SocketAddr};
 use std::io::prelude::*;
+use tokio::net::TcpStream;
+use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
 use super::tracker;
 use super::parser;
@@ -29,6 +31,10 @@ pub struct PeerConnection {
     bitfield: Vec<u8>,
 }
 
+pub struct PeerConnections {
+    connections: Vec<PeerConnection>,
+}
+
 impl PeerConnection {
     pub fn new(stream: TcpStream) -> PeerConnection {
         PeerConnection {
@@ -38,7 +44,8 @@ impl PeerConnection {
     }
 }
 
-pub fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMetadata) -> Vec<PeerConnection> {
+pub async fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMetadata)
+    -> Result<PeerConnections, std::io::Error> {
     // we should spawn a thread for each peer - look into rayon for this
     let mut connected_peers: Vec<PeerConnection> = Vec::new();
 
@@ -47,8 +54,8 @@ pub fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMe
 
         // currently this sends and receives handshake
         // perhaps these should be called independantly
-        let stream = match initiate_handshake(&peer, &metadata) {
-            Ok(stream) => { 
+        let stream = match perform_handshake(&peer, &metadata).await {
+            Ok(stream) => {
                 println!("TcpStream connected!");
                 stream },
             Err(e) => { println!("Error: {}", e);
@@ -69,19 +76,15 @@ pub fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::TorrentMe
         connected_peers.push(connected_peer);
     }
 
-    connected_peers
+    Ok(PeerConnections {
+        connections: connected_peers
+    })
 }
 
-fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
-    let socket = SocketAddr::from(SocketAddrV4::new(peer.ip, peer.port));
+async fn perform_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
+    let socket_addr = SocketAddr::from(SocketAddrV4::new(peer.ip, peer.port));
 
-    let mut tcp_stream = match TcpStream::connect_timeout(&socket, Duration::from_secs(3)) {
-        Ok(stream) => stream,
-        Err(e) => {
-            println!("Couldn't connect to the peer");
-            return Err(e)
-        },
-    };
+    let mut tcp_stream: tokio::net::TcpStream = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(&socket_addr)).await??;
 
     const DEFAULT_PSTR: &str = "BitTorrent protocol";
 
@@ -93,21 +96,21 @@ fn initiate_handshake(peer: &tracker::Peer, metadata: &parser::TorrentMetadata) 
 
     let handshake_bytes = handshake.to_bytes().clone();
 
-    tcp_stream.write(handshake_bytes.as_slice())?;
+    tcp_stream.write(handshake_bytes.as_slice()).await?;
     println!("Awaiting response");
 
-    match receive_handshake(&mut tcp_stream, metadata.info_hash.to_owned()) {
+    match receive_handshake(&mut tcp_stream, metadata.info_hash.to_owned()).await {
         Ok(()) => return Ok(tcp_stream),
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e)),
     }
 }
 
-fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(), String> {
-    let pstrlen = read_n(stream, 1)?;
-    read_n(stream, pstrlen[0] as u32)?; // ignore pstr
-    read_n(stream, 8)?; // ignore reserved
-    let info_hash = read_n(stream, 20)?;
-    let _peer_id = read_n(stream, 20)?;
+async fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(), String> {
+    let pstrlen = read_n(stream, 1).await?;
+    read_n(stream, pstrlen[0] as u32).await?; // ignore pstr
+    read_n(stream, 8).await?; // ignore reserved
+    let info_hash = read_n(stream, 20).await?;
+    let _peer_id = read_n(stream, 20).await?;
 
     {
         // validate info hash
@@ -120,13 +123,13 @@ fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(
     Ok(())
 }
 
-fn receive_message(stream: TcpStream) -> Result<message::Message, String> {
+async fn receive_message(stream: TcpStream) -> Result<message::Message, String> {
     let mut stream = stream;
     // first 4 bytes indicate the size of the message
-    let message_size = bytes_to_u32(&read_n(&mut stream, 4)?);
+    let message_size = bytes_to_u32(&read_n(&mut stream, 4).await?);
 
     if message_size > 0 {
-      let message = &read_n(&mut stream, message_size)?;
+      let message = &read_n(&mut stream, message_size).await?;
       Ok(message::identify_message(message[0], &message[1..]))
     } else {
        Ok(message::Message::KeepAlive) // do nothing 
@@ -146,22 +149,26 @@ fn bytes_to_u32(bytes: &[u8]) -> u32 {
     bytes[3] as u32 * BYTE_3
 }
 
-fn read_n(stream: &mut TcpStream, bytes_to_read: u32) -> Result<Vec<u8>, String> {
-    let mut buf = vec![];
-    read_n_to_buf(stream, &mut buf, bytes_to_read)?;
+async fn read_n(stream: &mut TcpStream, bytes_to_read: u32) -> Result<Vec<u8>, String> {
+    let buf = read_n_to_buf(stream, bytes_to_read).await?;
     Ok(buf)
 }
 
-fn read_n_to_buf(stream: &mut TcpStream, buf: &mut Vec<u8>, bytes_to_read: u32) -> Result<(), String> {
+async fn read_n_to_buf(stream: &mut TcpStream, bytes_to_read: u32) -> Result<Vec<u8>, String> {
+    let mut buf = vec![0u8; bytes_to_read as usize];
+
     if bytes_to_read == 0 {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
-    let bytes_read = stream.take(bytes_to_read as u64).read_to_end(buf);
+    let bytes_read = stream.read_exact(&mut buf).await;
     match bytes_read {
         Ok(0) => Err("Socket Closed".to_string()),
-        Ok(n) if n == bytes_to_read as usize => Ok(()),
-        Ok(n) => read_n_to_buf(stream, buf, bytes_to_read - n as u32),
+        Ok(n) if n == bytes_to_read as usize => Ok(buf),
+        Ok(n) => {
+            assert_eq!(n, bytes_to_read as usize);
+            unreachable!("partial read unexpected");
+        },
         Err(e) => Err(e.to_string())
     }
 }
