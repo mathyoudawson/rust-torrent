@@ -7,6 +7,7 @@ mod tracker;
 mod peer_connection;
 mod message;
 mod download;
+mod split_stream;
 
 use std::fs;
 
