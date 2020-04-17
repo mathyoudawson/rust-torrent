@@ -1,13 +1,24 @@
 use std::time::Duration;
 use std::net::{SocketAddrV4, SocketAddr};
-use std::io::prelude::*;
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::net::TcpStream;
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
+use tokio::io::{AsyncWrite, AsyncWriteExt, AsyncRead, AsyncReadExt};
 use tokio::sync::mpsc;
 
 use super::tracker;
 use super::parser;
 use super::message;
+
+type SharedTcpStream = Arc<RwLock<TcpStream>>;
+
+type Read = dyn AsyncRead + Send + Sync + Unpin;
+type Write = dyn AsyncWrite + Send + Sync + Unpin;
+
+type OwnedRead = Box<Read>;
+type OwnedWrite = Box<Write>;
+type SharedWrite = Arc<Mutex<OwnedWrite>>;
+
+// impl Send for SharedWrite { }
 
 struct Handshake {
    pstr: String,
@@ -17,7 +28,7 @@ struct Handshake {
 
 impl Handshake {
     fn to_bytes(&self) -> Vec<u8> {
-       let mut bytes: Vec<u8> = Vec::new(); 
+       let mut bytes: Vec<u8> = Vec::new();
        bytes.push(self.pstr.len() as u8); // length of protocol id
        bytes.append(&mut self.pstr.as_bytes().to_vec()); // protocol id
        bytes.append(&mut vec![0u8; 8]); // 8 bytes used to indicate extensions we dont support yet
@@ -30,49 +41,31 @@ impl Handshake {
 pub struct PeerConnection {
     // stream: TcpStream,
     bitfield: Vec<u8>,
-    outgoing_tx: mpsc::Sender<message::Message>,
 }
 
 pub struct PeerConnections {
+    // connection_manager: Connection
     connections: Vec<PeerConnection>,
     peer_incoming_rxs: Vec<mpsc::Receiver<message::Message>>,
 }
 
 impl PeerConnection {
-    pub fn new(peer: &tracker::Peer,
-               metadata: &parser::TorrentMetadata) -> (PeerConnection, mpsc::Receiver<message::Message>) {
+    pub async fn new(peer: &tracker::Peer,
+                     metadata: &parser::TorrentMetadata)
+        -> Result<(PeerConnection, mpsc::Receiver<message::Message>), std::io::Error> {
         let (incoming_tx, incoming_rx) = mpsc::channel(1024);
-        let (outgoing_tx, outgoing_rx) = mpsc::channel(1024);
 
         let socket_addr = SocketAddr::from(SocketAddrV4::new(peer.ip, peer.port));
-        tokio::spawn(peer_connection_background(socket_addr.clone(), metadata.clone(), incoming_tx, outgoing_rx));
+        let (read_half, write_half) = create_socket(&socket_addr).await?;
+        let shared_write = Arc::new(Mutex::new(write_half));
+        // tokio::spawn(peer_connection_background(read_half, shared_write, metadata.clone(), incoming_tx));
 
-        (PeerConnection {
+        Ok((PeerConnection {
             // stream,
             bitfield: Vec::new(),
-            outgoing_tx,
-        }, incoming_rx)
+        }, incoming_rx))
     }
 
-}
-
-async fn peer_connection_background(socket_addr: SocketAddr,
-                                    metadata: parser::TorrentMetadata,
-                                    mut incoming_tx: mpsc::Sender<message::Message>,
-                                    mut outgoing_rx: mpsc::Receiver<message::Message>)
-    -> Result<(), String> {
-    let mut tcp_stream = perform_handshake(&socket_addr, &metadata).await.map_err(|e| e.to_string())?;
-
-    loop {
-        while let Some(outgoing_message) = outgoing_rx.try_recv().ok() {
-            println!("[unimplemented] send_message {:?}", outgoing_message);
-        }
-
-        let message = receive_message(&mut tcp_stream).await?;
-        println!("[info] received peer message: {:?}", message);
-
-        incoming_tx.send(message).await.unwrap();
-    }
 }
 
 struct ReceivedMessages {
@@ -128,7 +121,13 @@ pub async fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::Tor
 
         // message::message_handler(message);
 
-        let (connected_peer, incoming_rx) = PeerConnection::new(peer, metadata);
+        let (connected_peer, incoming_rx) = match PeerConnection::new(peer, metadata).await {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("[error {:?}]: {}", peer, e);
+                continue;
+            },
+        };
 
         connected_peers.push(connected_peer);
         peer_rxs.push(incoming_rx);
@@ -140,10 +139,16 @@ pub async fn connect_to_peers(peers: &Vec<tracker::Peer>, metadata: &parser::Tor
     })
 }
 
-async fn perform_handshake(socket_addr: &SocketAddr, metadata: &parser::TorrentMetadata) -> Result<TcpStream, std::io::Error> {
+async fn create_socket(socket_addr: &SocketAddr) -> Result<(OwnedRead, OwnedWrite), std::io::Error>  {
+    let mut tcp_stream = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(socket_addr)).await??;
+    let (read_half, write_half) = tokio::io::split(tcp_stream);
+    Ok((Box::new(read_half), Box::new(write_half)))
+}
 
-    let mut tcp_stream: tokio::net::TcpStream = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(socket_addr)).await??;
-
+async fn perform_handshake(read: &mut (dyn AsyncRead + Unpin + Send),
+                           write: &mut (dyn AsyncWrite + Unpin + Send),
+                           metadata: &parser::TorrentMetadata)
+    -> Result<(), std::io::Error> {
     const DEFAULT_PSTR: &str = "BitTorrent protocol";
 
     let handshake = Handshake {
@@ -154,21 +159,21 @@ async fn perform_handshake(socket_addr: &SocketAddr, metadata: &parser::TorrentM
 
     let handshake_bytes = handshake.to_bytes().clone();
 
-    tcp_stream.write(handshake_bytes.as_slice()).await?;
+    write.write(handshake_bytes.as_slice()).await?;
     println!("Awaiting response");
 
-    match receive_handshake(&mut tcp_stream, metadata.info_hash.to_owned()).await {
-        Ok(()) => return Ok(tcp_stream),
+    match receive_handshake(read, metadata.info_hash.to_owned()).await {
+        Ok(()) => return Ok(()),
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e)),
     }
 }
 
-async fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Result<(), String> {
-    let pstrlen = read_n(stream, 1).await?;
-    read_n(stream, pstrlen[0] as u32).await?; // ignore pstr
-    read_n(stream, 8).await?; // ignore reserved
-    let info_hash = read_n(stream, 20).await?;
-    let _peer_id = read_n(stream, 20).await?;
+async fn receive_handshake(read: &mut (dyn AsyncRead + Unpin), our_info_hash: Vec<u8>) -> Result<(), String> {
+    let pstrlen = read_n(read, 1).await?;
+    read_n(read, pstrlen[0] as u32).await?; // ignore pstr
+    read_n(read, 8).await?; // ignore reserved
+    let info_hash = read_n(read, 20).await?;
+    let _peer_id = read_n(read, 20).await?;
 
     {
         // validate info hash
@@ -181,16 +186,15 @@ async fn receive_handshake(stream: &mut TcpStream, our_info_hash: Vec<u8>) -> Re
     Ok(())
 }
 
-async fn receive_message(stream: &mut TcpStream) -> Result<message::Message, String> {
-    let mut stream = stream;
+async fn receive_message(read: &mut Read) -> Result<message::Message, String> {
     // first 4 bytes indicate the size of the message
-    let message_size = bytes_to_u32(&read_n(&mut stream, 4).await?);
+    let message_size = bytes_to_u32(&read_n(read, 4).await?);
 
     if message_size > 0 {
-      let message = &read_n(&mut stream, message_size).await?;
+      let message = &read_n(read, message_size).await?;
       Ok(message::identify_message(message[0], &message[1..]))
     } else {
-       Ok(message::Message::KeepAlive) // do nothing 
+       Ok(message::Message::KeepAlive) // do nothing
     }
 }
 
@@ -207,19 +211,19 @@ fn bytes_to_u32(bytes: &[u8]) -> u32 {
     bytes[3] as u32 * BYTE_3
 }
 
-async fn read_n(stream: &mut TcpStream, bytes_to_read: u32) -> Result<Vec<u8>, String> {
-    let buf = read_n_to_buf(stream, bytes_to_read).await?;
+async fn read_n(read: &mut (dyn AsyncRead + Unpin), bytes_to_read: u32) -> Result<Vec<u8>, String> {
+    let buf = read_n_to_buf(read, bytes_to_read).await?;
     Ok(buf)
 }
 
-async fn read_n_to_buf(stream: &mut TcpStream, bytes_to_read: u32) -> Result<Vec<u8>, String> {
+async fn read_n_to_buf(read: &mut (dyn AsyncRead + Unpin), bytes_to_read: u32) -> Result<Vec<u8>, String> {
     let mut buf = vec![0u8; bytes_to_read as usize];
 
     if bytes_to_read == 0 {
         return Ok(Vec::new());
     }
 
-    let bytes_read = stream.read_exact(&mut buf).await;
+    let bytes_read = read.read_exact(&mut buf).await;
     match bytes_read {
         Ok(0) => Err("Socket Closed".to_string()),
         Ok(n) if n == bytes_to_read as usize => Ok(buf),
