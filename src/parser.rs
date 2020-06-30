@@ -3,14 +3,14 @@ use super::decoder;
 use super::hash;
 
 
-#[derive(RustcEncodable, RustcDecodable, PartialEq, Debug)]
+#[derive(Clone, RustcEncodable, RustcDecodable, PartialEq, Debug)]
 pub struct TorrentMetadata{
     pub info: TorrentMetadataInfo,
     pub info_hash: Vec<u8>,
     pub announce: String,
 }
 
-#[derive(RustcEncodable, RustcDecodable, PartialEq, Debug)]
+#[derive(Clone, RustcEncodable, RustcDecodable, PartialEq, Debug)]
 pub struct TorrentMetadataInfo {
     pub pieces: [u8; 20],
     pub piece_length: i64,

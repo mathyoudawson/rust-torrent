@@ -6,10 +6,13 @@ mod parser;
 mod tracker;
 mod peer_connection;
 mod message;
+mod download;
+mod split_stream;
 
 use std::fs;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     const TORRENT_PATH: &str = "src/ubuntu-20.04-desktop-amd64.iso.torrent";
 
     // TEST TORRENTS
@@ -17,13 +20,10 @@ fn main() {
     // const TORRENT_PATH: &str = "test.torrent";
 
     let bencoded_metadata: Vec<u8> = fs::read(TORRENT_PATH).unwrap();
-
     let metadata = parser::parse_bencoded_torrent(bencoded_metadata).unwrap();
 
-    let peers = match tracker::get_peers(&metadata) {
-        Ok(peers) => peers,
-        Err(e) => panic!(e),
-    };
+    // pass in output path at a later stage (or hardcode)
+    download::download_to_file(&metadata).await;
 
-    peer_connection::connect_to_peers(&peers, &metadata);
+    Ok(())
 }
