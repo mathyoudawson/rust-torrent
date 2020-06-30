@@ -10,11 +10,11 @@ mod message;
 use std::fs;
 
 fn main() {
-    const TORRENT_PATH: &str = "src/archlinux-2020.02.01-x86_64.iso.torrent";
+    const TORRENT_PATH: &str = "src/ubuntu-20.04-desktop-amd64.iso.torrent";
 
     // TEST TORRENTS
+    // const TORRENT_PATH: &str = "src/archlinux-2020.02.01-x86_64.iso.torrent";
     // const TORRENT_PATH: &str = "test.torrent";
-    // const TORRENT_PATH: &str = "ubuntu-18.04.4-desktop-amd64.iso.torrent";
 
     let bencoded_metadata: Vec<u8> = fs::read(TORRENT_PATH).unwrap();
 
