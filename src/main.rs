@@ -10,7 +10,7 @@ mod message;
 use std::fs;
 
 fn main() {
-    const TORRENT_PATH: &str = "src/ubuntu-20.04-desktop-amd64.iso.torrent";
+    const TORRENT_PATH: &str = "src/ubuntu-20.04.2.0-desktop-amd64.iso.torrent";
 
     // TEST TORRENTS
     // const TORRENT_PATH: &str = "src/archlinux-2020.02.01-x86_64.iso.torrent";

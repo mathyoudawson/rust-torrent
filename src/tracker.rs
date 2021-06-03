@@ -26,6 +26,7 @@ pub fn get_peers(metadata: &parser::TorrentMetadata) -> Result<Vec<Peer>, String
         panic!("Reponse should be a dict!");
     };
 
+    // What should we do when there are no peers?
     let peer_list = match response_dict.get(&bencode::util::ByteString::from_str("peers")).unwrap() {
         Bencode::ByteString(s) => s,
         _ => panic!("Not a ByteString"),
